@@ -1,0 +1,3 @@
+sudo apt-get install libmysqlclient-dev
+include "/usr/include/mysql/mysql.h"
+gcc prog.c -lmysqlclient
