@@ -1,0 +1,15 @@
+Create user
+CREATE USER someone IDENTIFIED BY 'password';
+
+Grant all priv's to user
+GRANT ALL ON *.* TO someone;
+
+Execute SQL file:
+\. mysqlstatements.sql
+
+Insert
+INSERT INTO fruit (name,color) VALUES("Blueberry","Blue");
+
+Delete
+DELETE FROM fruit WHERE name="carrot";
+
