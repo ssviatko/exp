@@ -13,7 +13,6 @@
 
 unsigned char l_p[MAXBYTEBUFF];
 unsigned char l_q[MAXBYTEBUFF];
-unsigned char l_n[MAXBYTEBUFF];
 
 struct option g_options[] = {
 	{ "bits", required_argument, NULL, 'b' },
@@ -71,7 +70,7 @@ int main(int argc, char **argv)
 		exit(EXIT_FAILURE);
 	}
 
-	printf("Preparing %d-bit p value...\n", l_bits);
+//	printf("Preparing %d-bit p value...\n", l_bits);
 	// prepare random n-bit odd number for DH p factor
 	res = read(l_urandom_fd, l_p, (l_bits / 8));
 	if (res != (l_bits / 8)) {
@@ -88,14 +87,14 @@ int main(int argc, char **argv)
 	int l_pp = mpz_probab_prime_p(l_p_import, 50);
 //	printf("mpz_probab_prime_p returned %d.\n", l_pp);
 	if (l_pp == 0) {
-		printf("calling mpz_nextprime...\n");
+//		printf("calling mpz_nextprime...\n");
 		mpz_nextprime(l_p_import, l_p_import);
 	}
 	gmp_printf("p = %Zx\n", l_p_import);
 	l_pp = mpz_probab_prime_p(l_p_import, 50);
 //	printf("mpz_probab_prime_p now returns %d.\n", l_pp);
 
-	printf("Preparing %d-bit q value...\n", l_bits);
+//	printf("Preparing %d-bit q value...\n", l_bits);
 	// prepare random n-bit odd number for DH p factor
 	res = read(l_urandom_fd, l_q, (l_bits / 8));
 	if (res != (l_bits / 8)) {
@@ -112,13 +111,23 @@ int main(int argc, char **argv)
 	l_pp = mpz_probab_prime_p(l_q_import, 50);
 //	printf("mpz_probab_prime_p returned %d.\n", l_pp);
 	if (l_pp == 0) {
-		printf("calling mpz_nextprime...\n");
+//		printf("calling mpz_nextprime...\n");
 		mpz_nextprime(l_q_import, l_q_import);
 	}
 	gmp_printf("q = %Zx\n", l_q_import);
 	l_pp = mpz_probab_prime_p(l_q_import, 50);
 //	printf("mpz_probab_prime_p now returns %d.\n", l_pp);
 
+	// establish p-1 and q-1
+	mpz_t l_p1;
+	mpz_init(l_p1);
+	mpz_sub_ui(l_p1, l_p_import, 1);
+	mpz_t l_q1;
+	mpz_init(l_q1);
+	mpz_sub_ui(l_q1, l_q_import, 1);
+	gmp_printf("(p - 1) = %Zx\n", l_p1);
+	gmp_printf("(q - 1) = %Zx\n", l_q1);
+	
 	// prepare n = p * q
 	mpz_t l_n;
 	mpz_init(l_n);
