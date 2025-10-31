@@ -39,7 +39,7 @@ int main(int argc, char **argv)
 				{
 					printf("usage: rsa -b (--bits) <bit width>\n");
 					printf("  p/q bit width must be between 128-8192 in 64 bit increments\n");
-					printf("  default: 256 bits\n");
+					printf("  default: %d bits\n", l_bits);
 					exit(EXIT_SUCCESS);
 				}
 				break;
@@ -64,7 +64,7 @@ int main(int argc, char **argv)
 	// open urandom
 	l_urandom_fd = open("/dev/urandom", O_RDONLY);
 	if (l_urandom_fd < 0) {
-		fprintf(stderr, "dh: problems opening /dev/urandom: %s\n", strerror(errno));
+		fprintf(stderr, "rsa: problems opening /dev/urandom: %s\n", strerror(errno));
 		exit(EXIT_FAILURE);
 	}
 
@@ -216,7 +216,7 @@ int main(int argc, char **argv)
 	for (i = 0; i < 10; ++i) {
 		res = read(l_urandom_fd, l_pt, ((l_bits * 2) / 8) - 1);
 		if (res != ((l_bits * 2) / 8) - 1) {
-			fprintf(stderr, "dh: problems reading /dev/urandom: %s\n", strerror(errno));
+			fprintf(stderr, "rsa: problems reading /dev/urandom: %s\n", strerror(errno));
 			exit(EXIT_FAILURE);
 		}
 		mpz_import(l_plain, ((l_bits * 2) / 8) - 1, 1, sizeof(unsigned char), 0, 0, l_pt);
