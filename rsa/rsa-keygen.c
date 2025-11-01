@@ -338,8 +338,8 @@ int main(int argc, char **argv)
 				break;
 			case '?':
 				{
-					printf("usage: rsa-keygen -b (--bits) <bit width>\n");
-					printf("  RSA bit width must be between 256-8192 in 256 bit increments\n");
+					printf("usage: rsa-keygen -b (--bits) <bit width> -t (--threads) <threads>\n");
+					printf("  RSA bit width must be between 256-16384 in 256 bit increments\n");
 					printf("  default: %d bits\n", g_bits);
 					exit(EXIT_SUCCESS);
 				}
