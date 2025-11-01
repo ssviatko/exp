@@ -304,6 +304,9 @@ void *gen_tf(void *arg)
 //		}
 //	}
 
+	// dirty, yes.. but I hate to wait
+	exit(EXIT_SUCCESS);
+
 	if (g_bits > 2048)
 		printf("\nPlease be patient while other threads terminate:\n(may take several seconds at large bit rates)\n");
 
