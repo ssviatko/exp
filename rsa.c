@@ -215,27 +215,31 @@ int main(int argc, char **argv)
 	mpz_init(l_decrypted);
 	printf("encrypt with public key -> decrypt with private key\n");
 	for (i = 0; i < 10; ++i) {
-		res = read(l_urandom_fd, l_pt, ((l_bits * 2) / 8) - 1);
-		if (res != ((l_bits * 2) / 8) - 1) {
+		res = read(l_urandom_fd, l_pt, ((l_bits * 2) / 8));
+		if (res != ((l_bits * 2) / 8)) {
 			fprintf(stderr, "rsa: problems reading /dev/urandom: %s\n", strerror(errno));
 			exit(EXIT_FAILURE);
 		}
+		// padding
+		l_pt[0] = 0x00;
 		mpz_import(l_plain, ((l_bits * 2) / 8) - 1, 1, sizeof(unsigned char), 0, 0, l_pt);
 		mpz_powm(l_cipher, l_plain, l_e, l_n);
 		mpz_powm(l_decrypted, l_cipher, l_d, l_n);
-		gmp_printf("plain = %Zx cipher = %Zx decrypted = %Zx %d\n", l_plain, l_cipher, l_decrypted, mpz_cmp(l_plain, l_decrypted));
+		gmp_printf("plain     = %Zx\ncipher    = %Zx\ndecrypted = %Zx %d\n", l_plain, l_cipher, l_decrypted, mpz_cmp(l_plain, l_decrypted));
 	}
 	printf("encrypt with private key -> decrypt with public key\n");
 	for (i = 0; i < 10; ++i) {
-		res = read(l_urandom_fd, l_pt, ((l_bits * 2) / 8) - 1);
-		if (res != ((l_bits * 2) / 8) - 1) {
+		res = read(l_urandom_fd, l_pt, ((l_bits * 2) / 8));
+		if (res != ((l_bits * 2) / 8)) {
 			fprintf(stderr, "rsa: problems reading /dev/urandom: %s\n", strerror(errno));
 			exit(EXIT_FAILURE);
 		}
+		// padding
+		l_pt[0] = 0x00;
 		mpz_import(l_plain, ((l_bits * 2) / 8) - 1, 1, sizeof(unsigned char), 0, 0, l_pt);
 		mpz_powm(l_cipher, l_plain, l_d, l_n);
 		mpz_powm(l_decrypted, l_cipher, l_e, l_n);
-		gmp_printf("plain = %Zx cipher = %Zx decrypted = %Zx %d\n", l_plain, l_cipher, l_decrypted, mpz_cmp(l_plain, l_decrypted));
+		gmp_printf("plain     = %Zx\ncipher    = %Zx\ndecrypted = %Zx %d\n", l_plain, l_cipher, l_decrypted, mpz_cmp(l_plain, l_decrypted));
 	}
 
 	// clean up
