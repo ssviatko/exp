@@ -164,6 +164,7 @@ int main(int argc, char **argv)
 			exit(EXIT_FAILURE);
 		}
 		g_q[0] &= 0x7f; // set up q to hopefully be < p/2
+		g_q[0] |= 0x40; // but not too little, please.. enforce first byte between 0x40 and 0x7f
 		g_q[(g_pqbits / 8) - 1] |= 0x01; // make it odd
 
 		mpz_import(l_q_import, (g_pqbits / 8), 1, sizeof(unsigned char), 0, 0, g_q);
@@ -285,6 +286,20 @@ int main(int argc, char **argv)
 	}
 	printf("d:", g_bits);
 	print_hex(g_buff, (g_bits / 8));
+
+	mpz_export(g_buff, &l_written, 1, sizeof(unsigned char), 0, 0, l_p_import);
+	if (l_written != (g_pqbits / 8)) {
+		right_justify(l_written, (g_pqbits / 8) - l_written, (char *)g_buff);
+	}
+	printf("p:");
+	print_hex(g_buff, (g_pqbits / 8));
+
+	mpz_export(g_buff, &l_written, 1, sizeof(unsigned char), 0, 0, l_q_import);
+	if (l_written != (g_pqbits / 8)) {
+		right_justify(l_written, (g_pqbits / 8) - l_written, (char *)g_buff);
+	}
+	printf("q:");
+	print_hex(g_buff, (g_pqbits / 8));
 
 	// clean up
 	mpz_clear(l_p_import);
