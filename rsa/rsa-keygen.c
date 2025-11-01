@@ -270,35 +270,35 @@ int main(int argc, char **argv)
 	if (l_written != (g_bits / 8)) {
 		right_justify(l_written, (g_bits / 8) - l_written, (char *)g_buff);
 	}
-	printf("n (%d bits):", g_bits);
+	printf("modulus n (%d bits):", g_bits);
 	print_hex(g_buff, (g_bits / 8));
 
 	mpz_export(g_buff, &l_written, 1, sizeof(unsigned char), 0, 0, l_e);
 	if (l_written != 4) { // save e as a 32 bit value, big endian
 		right_justify(l_written, 4 - l_written, (char *)g_buff);
 	}
-	printf("e:", g_bits);
+	printf("public exponent e:", g_bits);
 	print_hex(g_buff, 4);
 
 	mpz_export(g_buff, &l_written, 1, sizeof(unsigned char), 0, 0, l_d);
 	if (l_written != (g_bits / 8)) {
 		right_justify(l_written, (g_bits / 8) - l_written, (char *)g_buff);
 	}
-	printf("d:", g_bits);
+	printf("private exponent d:", g_bits);
 	print_hex(g_buff, (g_bits / 8));
 
 	mpz_export(g_buff, &l_written, 1, sizeof(unsigned char), 0, 0, l_p_import);
 	if (l_written != (g_pqbits / 8)) {
 		right_justify(l_written, (g_pqbits / 8) - l_written, (char *)g_buff);
 	}
-	printf("p:");
+	printf("prime p:");
 	print_hex(g_buff, (g_pqbits / 8));
 
 	mpz_export(g_buff, &l_written, 1, sizeof(unsigned char), 0, 0, l_q_import);
 	if (l_written != (g_pqbits / 8)) {
 		right_justify(l_written, (g_pqbits / 8) - l_written, (char *)g_buff);
 	}
-	printf("q:");
+	printf("prime q:");
 	print_hex(g_buff, (g_pqbits / 8));
 
 	// clean up
