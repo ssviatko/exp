@@ -244,7 +244,8 @@ void *gen_tf(void *arg)
 	}
 	g_bell = 1;
 	pthread_mutex_unlock(&g_bell_mtx);
-	printf("\ntid %d: Done.\n", a_twa->id);
+	//printf("\ntid %d: Done.\n", a_twa->id);
+	printf("\nDone.\n");
 
 	// export
 	size_t l_written = 0;
