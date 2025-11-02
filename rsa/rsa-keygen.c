@@ -9,10 +9,15 @@
 #include <time.h>
 #include <getopt.h>
 #include <pthread.h>
+#include <arpa/inet.h>
+
+#pragma pack(1)
 
 #define MAXBITS 16384
 #define MAXBYTEBUFF (MAXBITS / 8)
 #define MAXTHREADS 48
+
+#define BUFFLEN 1024
 
 typedef struct {
 	pthread_t thread;
@@ -32,6 +37,7 @@ struct option g_options[] = {
 	{ "help", no_argument, NULL, '?' },
 	{ "debug", no_argument, NULL, 'd' },
 	{ "threads", required_argument, NULL, 't' },
+	{ "out", required_argument, NULL, 'o' },
 	{ NULL, 0, NULL, 0 }
 };
 
@@ -42,6 +48,23 @@ unsigned int g_pqbits; // convenience value
 pthread_mutex_t g_urandom_mtx;
 int g_urandom_fd; // file descriptor for /dev/urandom
 unsigned int g_threads = 1; // default number of threads
+
+const char *g_private_suffix = "-private.bin";
+const char *g_public_suffix = "-public.bin";
+char g_private_filename[BUFFLEN];
+char g_public_filename[BUFFLEN];
+int g_filename_specified = 0;
+
+const uint8_t KIHT_MODULUS = 1;
+const uint8_t KIHT_PUBEXP = 2;
+const uint8_t KIHT_PRIVEXP = 3;
+const uint8_t KIHT_P = 4;
+const uint8_t KIHT_Q = 5;
+
+typedef struct {
+	uint8_t type;
+	uint32_t bit_width;
+} key_item_header;
 
 void print_hex(uint8_t *a_buffer, size_t a_len)
 {
@@ -248,6 +271,25 @@ void *gen_tf(void *arg)
 	printf("\nDone.\n");
 
 	// export
+	
+	int privkey_fd, pubkey_fd;
+
+	if (g_filename_specified) {
+		strcat(g_private_filename, g_private_suffix);
+		strcat(g_public_filename, g_public_suffix);
+		printf("public key file : %s\n", g_public_filename);
+		printf("private key file: %s\n", g_private_filename);
+		privkey_fd = open(g_private_filename, O_WRONLY | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+		if (privkey_fd < 0) {
+			fprintf(stderr, "unable to open private key file for writing. error: %s\n", strerror(errno));
+			exit(EXIT_FAILURE);
+		}
+		pubkey_fd = open(g_public_filename, O_WRONLY | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+		if (pubkey_fd < 0) {
+			fprintf(stderr, "unable to open public key file for writing. error: %s\n", strerror(errno));
+			exit(EXIT_FAILURE);
+		}
+	}
 	size_t l_written = 0;
 
 	mpz_export(a_twa->buff, &l_written, 1, sizeof(unsigned char), 0, 0, l_n);
@@ -256,6 +298,32 @@ void *gen_tf(void *arg)
 	}
 	printf("modulus n (%d bits):", g_bits);
 	print_hex(a_twa->buff, (g_bits / 8));
+	if (g_filename_specified) {
+		key_item_header l_kih;
+		l_kih.type = KIHT_MODULUS;
+		l_kih.bit_width = htonl(g_bits);
+		res = write(privkey_fd, &l_kih, sizeof(l_kih));
+		if (res != sizeof(l_kih)) {
+			fprintf(stderr, "problems writing key data: %s\n", strerror(errno));
+			exit(EXIT_FAILURE);
+		}
+		res = write(privkey_fd, a_twa->buff, (g_bits / 8));
+		if (res != (g_bits / 8)) {
+			fprintf(stderr, "problems writing key data: %s\n", strerror(errno));
+			exit(EXIT_FAILURE);
+		}
+
+		res = write(pubkey_fd, &l_kih, sizeof(l_kih));
+		if (res != sizeof(l_kih)) {
+			fprintf(stderr, "problems writing key data: %s\n", strerror(errno));
+			exit(EXIT_FAILURE);
+		}
+		res = write(pubkey_fd, a_twa->buff, (g_bits / 8));
+		if (res != (g_bits / 8)) {
+			fprintf(stderr, "problems writing key data: %s\n", strerror(errno));
+			exit(EXIT_FAILURE);
+		}
+	}
 
 	mpz_export(a_twa->buff, &l_written, 1, sizeof(unsigned char), 0, 0, l_e);
 	if (l_written != 4) { // save e as a 32 bit value, big endian
@@ -263,6 +331,34 @@ void *gen_tf(void *arg)
 	}
 	printf("public exponent e:", g_bits);
 	print_hex(a_twa->buff, 4);
+	if (g_filename_specified) {
+		key_item_header l_kih;
+		l_kih.type = KIHT_PUBEXP;
+		l_kih.bit_width = htonl(32);
+		res = write(privkey_fd, &l_kih, sizeof(l_kih));
+		if (res != sizeof(l_kih)) {
+			fprintf(stderr, "problems writing key data: %s\n", strerror(errno));
+			exit(EXIT_FAILURE);
+		}
+		res = write(privkey_fd, a_twa->buff, 4);
+		if (res != 4) {
+			fprintf(stderr, "problems writing key data: %s\n", strerror(errno));
+			exit(EXIT_FAILURE);
+		}
+
+		res = write(pubkey_fd, &l_kih, sizeof(l_kih));
+		if (res != sizeof(l_kih)) {
+			fprintf(stderr, "problems writing key data: %s\n", strerror(errno));
+			exit(EXIT_FAILURE);
+		}
+		res = write(pubkey_fd, a_twa->buff, 4);
+		if (res != 4) {
+			fprintf(stderr, "problems writing key data: %s\n", strerror(errno));
+			exit(EXIT_FAILURE);
+		}
+		// done writing to public key file
+		close(pubkey_fd);
+	}
 
 	mpz_export(a_twa->buff, &l_written, 1, sizeof(unsigned char), 0, 0, l_d);
 	if (l_written != (g_bits / 8)) {
@@ -270,6 +366,21 @@ void *gen_tf(void *arg)
 	}
 	printf("private exponent d:", g_bits);
 	print_hex(a_twa->buff, (g_bits / 8));
+	if (g_filename_specified) {
+		key_item_header l_kih;
+		l_kih.type = KIHT_PRIVEXP;
+		l_kih.bit_width = htonl(g_bits);
+		res = write(privkey_fd, &l_kih, sizeof(l_kih));
+		if (res != sizeof(l_kih)) {
+			fprintf(stderr, "problems writing key data: %s\n", strerror(errno));
+			exit(EXIT_FAILURE);
+		}
+		res = write(privkey_fd, a_twa->buff, (g_bits / 8));
+		if (res != (g_bits / 8)) {
+			fprintf(stderr, "problems writing key data: %s\n", strerror(errno));
+			exit(EXIT_FAILURE);
+		}
+	}
 
 	mpz_export(a_twa->buff, &l_written, 1, sizeof(unsigned char), 0, 0, l_p_import);
 	if (l_written != (g_pqbits / 8)) {
@@ -277,6 +388,21 @@ void *gen_tf(void *arg)
 	}
 	printf("prime p:");
 	print_hex(a_twa->buff, (g_pqbits / 8));
+	if (g_filename_specified) {
+		key_item_header l_kih;
+		l_kih.type = KIHT_P;
+		l_kih.bit_width = htonl(g_pqbits);
+		res = write(privkey_fd, &l_kih, sizeof(l_kih));
+		if (res != sizeof(l_kih)) {
+			fprintf(stderr, "problems writing key data: %s\n", strerror(errno));
+			exit(EXIT_FAILURE);
+		}
+		res = write(privkey_fd, a_twa->buff, (g_pqbits / 8));
+		if (res != (g_pqbits / 8)) {
+			fprintf(stderr, "problems writing key data: %s\n", strerror(errno));
+			exit(EXIT_FAILURE);
+		}
+	}
 
 	mpz_export(a_twa->buff, &l_written, 1, sizeof(unsigned char), 0, 0, l_q_import);
 	if (l_written != (g_pqbits / 8)) {
@@ -284,6 +410,22 @@ void *gen_tf(void *arg)
 	}
 	printf("prime q:");
 	print_hex(a_twa->buff, (g_pqbits / 8));
+	if (g_filename_specified) {
+		key_item_header l_kih;
+		l_kih.type = KIHT_Q;
+		l_kih.bit_width = htonl(g_pqbits);
+		res = write(privkey_fd, &l_kih, sizeof(l_kih));
+		if (res != sizeof(l_kih)) {
+			fprintf(stderr, "problems writing key data: %s\n", strerror(errno));
+			exit(EXIT_FAILURE);
+		}
+		res = write(privkey_fd, a_twa->buff, (g_pqbits / 8));
+		if (res != (g_pqbits / 8)) {
+			fprintf(stderr, "problems writing key data: %s\n", strerror(errno));
+			exit(EXIT_FAILURE);
+		}
+		close(privkey_fd);
+	}
 
 	// clean up
 	mpz_clear(l_p_import);
@@ -320,7 +462,7 @@ int main(int argc, char **argv)
 	unsigned int i;
 	int res; // result variable for UNIX reads
 	int opt;
-	while ((opt = getopt_long(argc, argv, "db:?t:", g_options, NULL)) != -1) {
+	while ((opt = getopt_long(argc, argv, "db:?t:o:", g_options, NULL)) != -1) {
 		switch (opt) {
 			case 'd':
 				{
@@ -337,17 +479,27 @@ int main(int argc, char **argv)
 					g_bits = atoi(optarg);
 				}
 				break;
+			case 'o':
+				{
+					strcpy(g_private_filename, optarg);
+					strcpy(g_public_filename, optarg);
+					g_filename_specified = 1;
+				}
+				break;
 			case '?':
 				{
-					printf("usage: rsa-keygen -b (--bits) <bit width> -t (--threads) <threads>\n");
-					printf("  RSA bit width must be between 256-16384 in 256 bit increments\n");
+					printf("usage: rsa-keygen <options>\n");
+					printf("  -b (--bits) <bit width> key modulus size\n");
+					printf("  -t (--threads) <threads> number of threads to use\n");
+					printf("  -o (--out) <name> filename specifier to write out keys\n");
+					printf("  RSA bit width must be between 256-%d in 256 bit increments\n", MAXBITS);
 					printf("  default: %d bits\n", g_bits);
 					exit(EXIT_SUCCESS);
 				}
 				break;
 		}
 	}
-	if (g_bits > 16384) {
+	if (g_bits > MAXBITS) {
 		fprintf(stderr, "rsa-keygen: bit width too big for practical purposes.\n");
 		exit(EXIT_FAILURE);
 	}
