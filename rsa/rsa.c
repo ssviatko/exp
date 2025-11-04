@@ -198,7 +198,7 @@ void prepare_outfile()
     if (res == 0) {
         // successfully stat-ted the file. do we want to overwrite it?
         if (g_outfile_overwrite == 0) {
-            fprintf(stderr, "rsa: output file already exists (use -v or --overwrite to write to it anyway)\n");
+            fprintf(stderr, "rsa: output file already exists (use -w or --overwrite to write to it anyway)\n");
             exit(EXIT_FAILURE);
         } else {
             printf("rsa: overwriting existing output file %s\n", g_outfile);
@@ -619,6 +619,7 @@ int main(int argc, char **argv)
                 printf("usage: rsa <options>\n");
                 printf("  -i (--in) <name> input file\n");
                 printf("  -o (--out) <name> output file\n");
+		printf("  -w (--overwrite) force overwrite of existing output file\n");
                 printf("  -k (--key) <name> full name of key file to use\n");
                 printf("     (--debug) use debug mode\n");
                 printf("  -? (--help) this screen\n");
