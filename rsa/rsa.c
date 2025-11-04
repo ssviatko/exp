@@ -363,9 +363,11 @@ void get_random(uint8_t *a_buffer, size_t a_len)
 void do_encrypt()
 {
     int lastblock = 0; // flag to indicate we have run out of data, this is the last block
+    int l_block_ctr = 0;
     int res;
 
     // prepare first block
+    l_block_ctr++;
     get_random(g_buff, g_block_size);
     // PKCS#1 style padding of first two bytes
     g_buff[0] = 0;
@@ -460,6 +462,7 @@ void do_encrypt()
     // now do the same for all the rest of the data
     while (lastblock == 0) {
         // prepare block
+        l_block_ctr++;
         get_random(g_buff, g_block_size);
         // padding
         g_buff[0] = 0;
@@ -475,7 +478,7 @@ void do_encrypt()
             lastblock = 1;
         }
         if (g_debug > 0) {
-            printf("do_encrypt: %d used of block data capacity of %d bytes)", res, g_block_capacity);
+            printf("\ndo_encrypt: block #%d - %d used of block data capacity of %d bytes)", l_block_ctr, res, g_block_capacity);
             print_hex(g_buff, g_block_size);
         }
         // load up our 1st block we just created
