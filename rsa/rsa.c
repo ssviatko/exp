@@ -380,7 +380,7 @@ void do_encrypt()
     memcpy(g_buff + 8, &l_fih, sizeof(fileinfo_header));
 
     // copy data into first block; zero it then read from infile
-    memset(g_buff + 8 + sizeof(fileinfo_header), 0, g_1stblock_capacity);
+//    memset(g_buff + 8 + sizeof(fileinfo_header), 0, g_1stblock_capacity);
     res = read(g_infile_fd, g_buff + 8 + sizeof(fileinfo_header), g_1stblock_capacity);
     if (res < 0) {
         // actual error
@@ -467,7 +467,7 @@ void do_encrypt()
         // padding
         g_buff[0] = 0;
         // copy data into block
-        memset(g_buff + 8, 0, g_block_capacity);
+//        memset(g_buff + 8, 0, g_block_capacity);
         res = read(g_infile_fd, g_buff + 8, g_block_capacity);
         if (res < 0) {
             // actual error
