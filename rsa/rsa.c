@@ -384,6 +384,7 @@ void do_encrypt()
     res = read(g_infile_fd, g_buff + 8 + sizeof(fileinfo_header), g_1stblock_capacity);
     if (res == 0) {
         // zero length file, nothing to do!
+        if (g_debug > 0) printf("do_encrypt: zero length input file, bailing out\n");
         return;
     }
     if (res < 0) {
@@ -475,6 +476,7 @@ void do_encrypt()
         res = read(g_infile_fd, g_buff + 8, g_block_capacity);
         if (res == 0) {
             // at the EOF, so don't make any new blocks
+            if (g_debug > 0) printf("do_encrypt: got EOF on input file when populating new block, bailing out\n");
             lastblock = 1;
             continue;
         }
