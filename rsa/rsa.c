@@ -149,16 +149,6 @@ void reverse_float(reversible_float_t *a_val)
     }
 }
 
-void print_epoch_timestamp(reversible_int64_t *a_val)
-{
-    // reverse it once to get it back to host endianness
-    reverse_int64(a_val);
-    // print it
-    printf("%s", asctime(gmtime((time_t *)&a_val->ll)));
-    // and then put it back to network endianness
-    reverse_int64(a_val);
-}
-
 void print_hex(uint8_t *a_buffer, size_t a_len)
 {
     int i;
@@ -439,11 +429,10 @@ void do_encrypt()
     l_fih.crc = htonl(g_infile_crc);
     l_fih.crc_xor = htonl(g_infile_crc ^ ~0UL);
     l_fih.time.ll = time(NULL);
-    reverse_int64(&l_fih.time);
     if (g_debug > 0) {
-        printf("embedding GMT time stamp: ");
-        print_epoch_timestamp(&l_fih.time);
+        printf("embedding GMT time stamp: %s", asctime(gmtime((time_t *)&l_fih.time.ll)));
     }
+    reverse_int64(&l_fih.time);
     l_fih.latitude.f = g_latitude;
     reverse_float(&l_fih.latitude);
     l_fih.longitude.f = g_longitude;
@@ -619,6 +608,153 @@ void do_encrypt()
     mpz_clear(l_n);
 }
 
+void do_decrypt()
+{
+    int l_block_ctr = 0;
+    int res;
+    int l_eof = 0;
+    fileinfo_header l_fih;
+    uint32_t l_bytes_written_tab = 0;
+
+    do {
+        l_block_ctr++;
+        res = read(g_infile_fd, g_buff, g_block_size);
+        if (res == 0) {
+            // zero length file, or reached the end of our input
+            if (g_debug > 0) printf("do_decrypt: EOF on input file, bailing out\n");
+            l_eof = 1;
+            continue;
+        }
+        if (res < 0) {
+            fprintf(stderr, "rsa: unable to read from input file during decrypt operation: %s\n", strerror(errno));
+            exit(EXIT_FAILURE);
+        }
+        if (res < g_block_size) {
+            // file is already supposed to be a multiple of our block size, so this should never happen
+            fprintf(stderr, "rsa: unable to read full block from input file during decrypt operation: expected %d got %d\n", g_block_size, res);
+            exit(EXIT_FAILURE);
+        }
+        if (g_debug > 0) {
+            printf("\ndo_decrypt: block %d from input file", l_block_ctr);
+            print_hex(g_buff, g_block_size);
+        }
+
+        // decrypt block
+        mpz_t l_block;
+        mpz_init(l_block);
+        mpz_t l_cipher;
+        mpz_init(l_cipher);
+        mpz_t l_d;
+        mpz_init(l_d);
+        mpz_t l_n;
+        mpz_init(l_n);
+        size_t l_written;
+
+        // load our key data
+        mpz_import(l_d, g_block_size, 1, sizeof(unsigned char), 0, 0, g_d);
+        mpz_import(l_n, g_block_size, 1, sizeof(unsigned char), 0, 0, g_n);
+
+        // load up our cipher block
+        mpz_import(l_cipher, g_block_size, 1, sizeof(unsigned char), 0, 0, g_buff);
+
+        // and decrypt it
+        mpz_powm(l_block, l_cipher, l_d, l_n);
+        if (g_debug > 0) {
+            gmp_printf("n      = %Zx\nd      = %Zx\ncipher = %Zx\nblock  = %Zx\n", l_n, l_d, l_cipher, l_block);
+        }
+
+        // and export it to aux block
+        mpz_export(g_buff2, &l_written, 1, sizeof(unsigned char), 0, 0, l_block);
+        if (l_written != g_block_size) {
+            right_justify(l_written, g_block_size - l_written, (char *)g_buff2);
+        }
+        if (g_debug > 0) {
+            printf("do_decrypt: decrypted block %d", l_block_ctr);
+            print_hex(g_buff2, g_block_size);
+        }
+
+        // take care of business with the first block
+        if (l_block_ctr == 1) {
+            memcpy(&l_fih, g_buff2 + 8, sizeof(fileinfo_header));
+            // get everything in host byte order
+            l_fih.size = ntohl(l_fih.size);
+            l_fih.size_xor = ntohl(l_fih.size_xor);
+            l_fih.crc = ntohl(l_fih.crc);
+            l_fih.crc_xor = ntohl(l_fih.crc_xor);
+            reverse_int64(&l_fih.time);
+            reverse_float(&l_fih.latitude);
+            reverse_float(&l_fih.longitude);
+            // check to see if we decrypted this block properly
+            if (l_fih.size != (l_fih.size_xor ^ ~0U)) {
+                goto do_decrypt_keyerror;
+            }
+            if (l_fih.crc != (l_fih.crc_xor ^ ~0U)) {
+                goto do_decrypt_keyerror;
+            }
+            // assumed good fileinfo_header now
+            printf("rsa: data length in input file is %d bytes.\n", l_fih.size);
+            if (g_debug > 0) printf("do_decrypt: input file data CRC is %08X\n", l_fih.crc);
+            printf("rsa: GMT time stamp: %s", asctime(gmtime((time_t *)&l_fih.time.ll)));
+            printf("rsa: geolocation: latitude %f, longitude %f\n", l_fih.latitude.f, l_fih.longitude.f);
+
+            // write any data contained in first block to output file
+            uint32_t l_bytes_expected = g_1stblock_capacity;
+            if (l_fih.size < g_1stblock_capacity)
+                l_bytes_expected = l_fih.size;
+            if (g_debug > 0) printf("do_decrypt: expecting to write %d bytes in write operation\n", l_bytes_expected);
+            res = write(g_outfile_fd, g_buff2 + 8 + sizeof(fileinfo_header), l_bytes_expected);
+            if (res < 0) {
+                fprintf(stderr, "rsa: unable to write to output file during decrypt operation: %s\n", strerror(errno));
+                exit(EXIT_FAILURE);
+            }
+            if (res < l_bytes_expected) {
+                fprintf(stderr, "rsa: problems writing to output file, wrote %d bytes, expected %d\n", res, l_bytes_expected);
+                exit(EXIT_FAILURE);
+            }
+            l_bytes_written_tab += res;
+        } else {
+            // subsequent block, so just write it out
+            if (l_block_ctr == 2) {
+                printf("rsa: decrypting ...");
+            } else {
+                // print progress dot every eight blocks
+                if (l_block_ctr % 8 == 0) printf(".");
+            }
+            uint32_t l_bytes_expected = g_block_capacity;
+            if (l_fih.size - l_bytes_written_tab < g_block_capacity)
+                l_bytes_expected = l_fih.size - l_bytes_written_tab;
+            if (g_debug > 0) printf("do_decrypt: expecting to write %d bytes in write operation\n", l_bytes_expected);
+            res = write(g_outfile_fd, g_buff2 + 8, l_bytes_expected);
+            if (res < 0) {
+                fprintf(stderr, "rsa: unable to write to output file during decrypt operation: %s\n", strerror(errno));
+                exit(EXIT_FAILURE);
+            }
+            if (res < l_bytes_expected) {
+                fprintf(stderr, "rsa: problems writing to output file, wrote %d bytes, expected %d\n", res, l_bytes_expected);
+                exit(EXIT_FAILURE);
+            }
+            l_bytes_written_tab += res;
+        }
+        // done writing output?
+        if (l_fih.size == l_bytes_written_tab) {
+            l_eof = 1;
+            printf("\n");
+            if (g_debug > 0) printf("do_decrypt: finished writing input data\n");
+        }
+    } while (l_eof == 0);
+    get_outfile_crc();
+    if (g_outfile_crc == l_fih.crc) {
+        printf("rsa: CRC OK\n");
+    } else {
+        printf("rsa: CRC failure, expected %08X, got %08X.\n", l_fih.crc, g_outfile_crc);
+    }
+    return;
+
+do_decrypt_keyerror:
+    fprintf(stderr, "rsa: error decrypting first block, wrong key file or damaged key.\n");
+    exit(EXIT_FAILURE);
+}
+
 int main(int argc, char **argv)
 {
     unsigned int i;
@@ -737,6 +873,8 @@ int main(int argc, char **argv)
         }
     }
 
+    setbuf(stdout, NULL); // disable buffering so we can print our progress
+
     // preform endianness test, for 64-bit and floating point values since there is no portable way to do this
     reversible_int64_t l_rev;
     l_rev.ll = 0x1234567812345678LL;
@@ -831,6 +969,7 @@ int main(int argc, char **argv)
                 exit(EXIT_FAILURE);
             }
             prepare_outfile();
+            do_decrypt();
         }
         break;
         case MODE_SIGN:
