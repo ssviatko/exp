@@ -43,7 +43,7 @@ struct option g_options[] = {
 
 int g_debug = 0;
 // note: for the keygen, g_bits now refers to the n/block size, not the p/q size
-unsigned int g_bits = 256; // default bit width
+unsigned int g_bits = 512; // default bit width
 unsigned int g_pqbits; // convenience value
 pthread_mutex_t g_urandom_mtx;
 int g_urandom_fd; // file descriptor for /dev/urandom
@@ -492,7 +492,7 @@ int main(int argc, char **argv)
 					printf("  -b (--bits) <bit width> key modulus size\n");
 					printf("  -t (--threads) <threads> number of threads to use\n");
 					printf("  -o (--out) <name> filename specifier to write out keys\n");
-					printf("  RSA bit width must be between 256-%d in 256 bit increments\n", MAXBITS);
+					printf("  RSA bit width must be between 512-%d in 256 bit increments\n", MAXBITS);
 					printf("  default: %d bits\n", g_bits);
 					exit(EXIT_SUCCESS);
 				}
@@ -503,7 +503,7 @@ int main(int argc, char **argv)
 		fprintf(stderr, "rsa-keygen: bit width too big for practical purposes.\n");
 		exit(EXIT_FAILURE);
 	}
-	if (g_bits < 256) {
+	if (g_bits < 512) {
 		fprintf(stderr, "rsa-keygen: bit width too small for practical purposes.\n");
 		exit(EXIT_FAILURE);
 	}
