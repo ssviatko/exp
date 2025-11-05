@@ -20,6 +20,18 @@
 #define BUFFLEN 1024
 #define PADDING 12 // amount of random padding per block
 
+typedef union {
+    int64_t ll;
+    char data[8];
+} reversible_int64_t;
+
+typedef union {
+    float f;
+    char data[4];
+} reversible_float_t;
+
+int g_endianness = 0; // 0 = big, 1 = small
+
 uint8_t g_n[MAXBYTEBUFF];
 int g_n_loaded = 0;
 uint8_t g_e[sizeof(uint32_t)];
@@ -64,12 +76,18 @@ uint32_t g_block_size;
 int g_infile_block_multiple = 0; // is infile a multiple of the specified block size?
 uint32_t g_block_capacity; // block size minus padding bytes, based on key size
 uint32_t g_1stblock_capacity; // first block capacity minus fileinfo header
+float g_latitude = 0.0;
+float g_longitude = 0.0;
 
 typedef struct {
+    uint8_t flags; // high bit 1 = signed content, 0 = conventionally encrypted
     uint32_t size;
     uint32_t size_xor;
     uint32_t crc;
     uint32_t crc_xor;
+    reversible_int64_t time;
+    reversible_float_t latitude;
+    reversible_float_t longitude;
 } fileinfo_header;
 
 int g_debug = 0;
@@ -97,8 +115,49 @@ struct option g_options[] = {
     { "verify", no_argument, NULL, 'v' },
     { "test", no_argument, NULL, 't' },
     { "overwrite", no_argument, NULL, 'w' },
+    { "latitude", required_argument, NULL, 1002 },
+    { "longitude", required_argument, NULL, 1003 },
     { NULL, 0, NULL, 0 }
 };
+
+void reverse_int64(reversible_int64_t *a_val)
+{
+    int i;
+    char ch;
+
+    if (g_endianness > 0) {
+        for (i = 0; i <= 3; ++i) {
+            ch = a_val->data[i];
+            a_val->data[i] = a_val->data[7 - i];
+            a_val->data[7 - i] = ch;
+        }
+    }
+}
+
+void reverse_float(reversible_float_t *a_val)
+{
+    int i;
+    char ch;
+
+    if (g_endianness > 0) {
+        ch = a_val->data[0];
+        a_val->data[0] = a_val->data[3];
+        a_val->data[3] = ch;
+        ch = a_val->data[1];
+        a_val->data[1] = a_val->data[2];
+        a_val->data[2] = ch;
+    }
+}
+
+void print_epoch_timestamp(reversible_int64_t *a_val)
+{
+    // reverse it once to get it back to host endianness
+    reverse_int64(a_val);
+    // print it
+    printf("%s", asctime(gmtime((time_t *)&a_val->ll)));
+    // and then put it back to network endianness
+    reverse_int64(a_val);
+}
 
 void print_hex(uint8_t *a_buffer, size_t a_len)
 {
@@ -373,10 +432,25 @@ void do_encrypt()
     g_buff[0] = 0;
     // prepare fileinfo header
     fileinfo_header l_fih;
+    get_random(&l_fih.flags, 1); // fill flags byte with random data
+    l_fih.flags &= 0x7f; // mask off high bit, not signing this content
     l_fih.size = htonl(g_infile_length);
     l_fih.size_xor = htonl(g_infile_length ^ ~0UL);
     l_fih.crc = htonl(g_infile_crc);
     l_fih.crc_xor = htonl(g_infile_crc ^ ~0UL);
+    l_fih.time.ll = time(NULL);
+    reverse_int64(&l_fih.time);
+    if (g_debug > 0) {
+        printf("embedding GMT time stamp: ");
+        print_epoch_timestamp(&l_fih.time);
+    }
+    l_fih.latitude.f = g_latitude;
+    reverse_float(&l_fih.latitude);
+    l_fih.longitude.f = g_longitude;
+    reverse_float(&l_fih.longitude);
+    if (g_debug > 0) {
+        printf("embedding geolocation: latitude %f, longitude %f\n", g_latitude, g_longitude);
+    }
     memcpy(g_buff + 8, &l_fih, sizeof(fileinfo_header));
 
     // copy data into first block; zero it then read from infile
@@ -557,6 +631,16 @@ int main(int argc, char **argv)
                 g_debug = 1;
             }
             break;
+            case 1002: // latitude
+            {
+                g_latitude = atof(optarg);
+            }
+            break;
+            case 1003: // longitude
+            {
+                g_longitude = atof(optarg);
+            }
+            break;
             case 'i':
             {
                 strcpy(g_infile, optarg);
@@ -630,8 +714,11 @@ int main(int argc, char **argv)
                 printf("usage: rsa <options>\n");
                 printf("  -i (--in) <name> input file\n");
                 printf("  -o (--out) <name> output file\n");
-		printf("  -w (--overwrite) force overwrite of existing output file\n");
+                printf("  -w (--overwrite) force overwrite of existing output file\n");
                 printf("  -k (--key) <name> full name of key file to use\n");
+                printf("     (--latitude) <value> specify your latitude\n");
+                printf("     (--longitude) <value> specify your longitude\n");
+                printf("       latitude and longitude are specified as floating point numbers\n");
                 printf("     (--debug) use debug mode\n");
                 printf("  -? (--help) this screen\n");
                 printf("operational modes (select only one)\n");
@@ -648,6 +735,20 @@ int main(int argc, char **argv)
             }
             break;
         }
+    }
+
+    // preform endianness test, for 64-bit and floating point values since there is no portable way to do this
+    reversible_int64_t l_rev;
+    l_rev.ll = 0x1234567812345678LL;
+    if (l_rev.data[0] == 0x78) {
+        g_endianness = 1;
+        if (g_debug) printf("endianness: little\n");
+    } else if (l_rev.data[0] == 0x12) {
+        g_endianness = 0;
+        if (g_debug) printf("endianness: big\n");
+    } else {
+        fprintf(stderr, "unable to determine endianness of host machine.\n");
+        exit(EXIT_FAILURE);
     }
 
     if (g_debug > 0)
