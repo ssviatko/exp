@@ -883,7 +883,7 @@ int main(int argc, char **argv)
                 printf("     (--latitude) <value> specify your latitude\n");
                 printf("     (--longitude) <value> specify your longitude\n");
                 printf("       latitude and longitude are specified as floating point numbers\n");
-                printf("       will be rounded to 4 decimal places (less than 11.1 meters accuracy)\n");
+                printf("       will be rounded to 4 decimal places (accuracy of 11.1 meters/36.4 feet)\n");
                 printf("     (--debug) use debug mode\n");
                 printf("  -? (--help) this screen\n");
                 printf("operational modes (select only one)\n");
