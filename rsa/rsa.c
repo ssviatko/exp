@@ -173,6 +173,26 @@ static void right_justify(size_t a_size, size_t a_offset, char *a_buff)
     }
 }
 
+void progress(uint32_t a_sofar, uint32_t a_total)
+{
+    static size_t l_lastsize = 0;
+    int i;
+    char l_txt[BUFFLEN];
+
+    // cover over our previous message
+    for (i = 0; i < l_lastsize; ++i)
+        printf("\b");
+    for (i = 0; i < l_lastsize; ++i)
+        printf(" ");
+    for (i = 0; i < l_lastsize; ++i)
+        printf("\b");
+
+    // print our message
+    sprintf(l_txt, "(%d of %d) ", a_sofar, a_total);
+    l_lastsize = strlen(l_txt);
+    printf("%s", l_txt);
+}
+
 void load_key()
 {
     if (g_keyfile_specified == 0) {
@@ -440,6 +460,8 @@ void do_encrypt()
     if (g_debug > 0) {
         printf("embedding geolocation: latitude %f, longitude %f\n", g_latitude, g_longitude);
     }
+    printf("rsa: encrypting ...");
+
     memcpy(g_buff + 8, &l_fih, sizeof(fileinfo_header));
 
     // copy data into first block; zero it then read from infile
@@ -601,6 +623,7 @@ void do_encrypt()
             mpz_clear(l_decrypted);
         }
     }
+    printf(" done.\n");
 
     mpz_clear(l_block);
     mpz_clear(l_cipher);
@@ -715,11 +738,13 @@ void do_decrypt()
         } else {
             // subsequent block, so just write it out
             if (l_block_ctr == 2) {
-                printf("rsa: decrypting ...");
-            } else {
-                // print progress dot every eight blocks
-                if (l_block_ctr % 8 == 0) printf(".");
+                printf("rsa: decrypting ");
+                progress(l_bytes_written_tab, l_fih.size);
             }
+//            } else {
+//                // print progress dot every eight blocks
+//                if (l_block_ctr % 8 == 0) printf(".");
+//            }
             uint32_t l_bytes_expected = g_block_capacity;
             if (l_fih.size - l_bytes_written_tab < g_block_capacity)
                 l_bytes_expected = l_fih.size - l_bytes_written_tab;
@@ -734,10 +759,13 @@ void do_decrypt()
                 exit(EXIT_FAILURE);
             }
             l_bytes_written_tab += res;
+            if (l_block_ctr % 8 == 0) progress(l_bytes_written_tab, l_fih.size);
         }
         // done writing output?
         if (l_fih.size == l_bytes_written_tab) {
             l_eof = 1;
+            // don't leave our progress meter hanging
+            progress(l_bytes_written_tab, l_fih.size);
             printf("\n");
             if (g_debug > 0) printf("do_decrypt: finished writing input data\n");
         }
