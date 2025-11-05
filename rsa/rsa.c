@@ -458,7 +458,7 @@ void do_encrypt()
     l_fih.longitude.f = g_longitude;
     reverse_float(&l_fih.longitude);
     if (g_debug > 0) {
-        printf("embedding geolocation: latitude %f, longitude %f\n", g_latitude, g_longitude);
+        printf("embedding geolocation: latitude %.4f, longitude %.4f\n", g_latitude, g_longitude);
     }
     printf("rsa: encrypting ...");
 
@@ -718,7 +718,7 @@ void do_decrypt()
             printf("rsa: data length in input file is %d bytes.\n", l_fih.size);
             if (g_debug > 0) printf("do_decrypt: input file data CRC is %08X\n", l_fih.crc);
             printf("rsa: GMT time stamp: %s", asctime(gmtime((time_t *)&l_fih.time.ll)));
-            printf("rsa: geolocation: latitude %f, longitude %f\n", l_fih.latitude.f, l_fih.longitude.f);
+            printf("rsa: geolocation: latitude %.4f, longitude %.4f\n", l_fih.latitude.f, l_fih.longitude.f);
 
             // write any data contained in first block to output file
             uint32_t l_bytes_expected = g_1stblock_capacity;
@@ -883,6 +883,7 @@ int main(int argc, char **argv)
                 printf("     (--latitude) <value> specify your latitude\n");
                 printf("     (--longitude) <value> specify your longitude\n");
                 printf("       latitude and longitude are specified as floating point numbers\n");
+                printf("       will be rounded to 4 decimal places (less than 11.1 meters accuracy)\n");
                 printf("     (--debug) use debug mode\n");
                 printf("  -? (--help) this screen\n");
                 printf("operational modes (select only one)\n");
