@@ -824,6 +824,14 @@ void do_sign_verify(int a_mode)
         print_hex(l_digest, 32);
     }
 
+    // get time and location info
+    reversible_int64_t l_time;
+    l_time.ll = time(NULL);
+    reversible_float_t l_lat;
+    l_lat.f = g_latitude;
+    reversible_float_t l_long;
+    l_long.f = g_longitude;
+
     if (a_mode == 0) {
         // create signature file
         // find out if signature file already exists
@@ -856,6 +864,14 @@ void do_sign_verify(int a_mode)
         g_buff[0] = 0;
         // copy our digest into this block, after the random padding
         memcpy(g_buff + 8, l_digest, 32);
+        printf("rsa: embedding GMT time stamp: %s", asctime(gmtime((time_t *)&l_time.ll)));
+        printf("rsa: embedding geolocation: latitude %.4f, longitude %.4f\n", l_lat.f, l_long.f);
+        reverse_int64(&l_time);
+        reverse_float(&l_lat);
+        reverse_float(&l_long);
+        memcpy(g_buff + 40, &l_time.ll, 8);
+        memcpy(g_buff + 48, &l_lat.f, 4);
+        memcpy(g_buff + 52, &l_long.f, 4);
         if (g_debug > 0) {
             printf("do_sign_verify: plaintext block with hash");
             print_hex(g_buff, g_block_size);
@@ -963,6 +979,14 @@ void do_sign_verify(int a_mode)
         }
         if (memcmp(l_digest_dec, l_digest, 32) == 0) {
             printf("rsa: verify OK\n");
+            memcpy(&l_time.ll, g_buff2 + 40, 8);
+            reverse_int64(&l_time);
+            printf("rsa: GMT timestamp of signature: %s", asctime(gmtime((time_t *)&l_time.ll)));
+            memcpy(&l_lat.f, g_buff2 + 48, 4);
+            memcpy(&l_long.f, g_buff2 + 52, 4);
+            reverse_float(&l_lat);
+            reverse_float(&l_long);
+            printf("rsa: geolocation: latitude %.4f, longitude %.4f\n", l_lat.f, l_long.f);
         } else {
             printf("rsa: verify FAILED\n");
         }
