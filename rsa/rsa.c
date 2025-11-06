@@ -12,6 +12,8 @@
 #include <arpa/inet.h>
 #include <sys/stat.h>
 
+#include "sha2.h"
+
 #pragma pack(1)
 
 #define MAXBITS 16384
@@ -69,6 +71,10 @@ char g_keyfile[BUFFLEN];
 int g_keyfile_specified = 0;
 uint32_t g_bits = 0;
 
+char g_signaturefile[BUFFLEN];
+int g_signaturefile_specified = 0;
+int g_signaturefile_fd;
+
 int g_urandom_fd;
 
 // block related
@@ -109,6 +115,7 @@ struct option g_options[] = {
     { "in", required_argument, NULL, 'i' },
     { "out", required_argument, NULL, 'o' },
     { "key", required_argument, NULL, 'k' },
+    { "signature", required_argument, NULL, 'g' },
     { "encrypt", no_argument, NULL, 'e' },
     { "decrypt", no_argument, NULL, 'd' },
     { "sign", no_argument, NULL, 's' },
@@ -783,12 +790,194 @@ do_decrypt_keyerror:
     exit(EXIT_FAILURE);
 }
 
+void do_sign_verify(int a_mode)
+{
+    // mode=0, sign... mode=1, verify.
+    // irrespective of mode, we need to compute a sha2-256 hash on the input file
+    int i;
+    int res;
+    uint8_t l_digest[32];
+    uint8_t l_buff[4096]; // buffer our reads
+
+    // compute sha2-256 hash
+    sha256_ctx l_ctx;
+    sha256_init(&l_ctx);
+    do {
+        res = read(g_infile_fd, l_buff, 4096);
+        if (res == 0)
+            continue; // got our EOF
+            if (res < 0) {
+                fprintf(stderr, "rsa: unable to compute sha2-256 hash of input file: %s\n", strerror(errno));
+                exit(EXIT_FAILURE);
+            }
+            sha256_update(&l_ctx, (const uint8_t *)l_buff, res);
+    } while (res != 0);
+    sha256_final(&l_ctx, l_digest);
+    // rewind g_infile_fd
+    res = lseek(g_infile_fd, 0, SEEK_SET);
+    if (res < 0) {
+        fprintf(stderr, "res: unable to rewind input file after computing sha2-256 hash: %s\n", strerror(errno));
+        exit(EXIT_FAILURE);
+    }
+    if (g_debug > 0) {
+        printf("do_sign_verify: sha2-256 hash of input file");
+        print_hex(l_digest, 32);
+    }
+
+    if (a_mode == 0) {
+        // create signature file
+        // find out if signature file already exists
+        struct stat l_signaturefile_stat;
+        res = stat(g_signaturefile, &l_signaturefile_stat);
+        if (res == 0) {
+            if (g_outfile_overwrite == 0) {
+                fprintf(stderr, "rsa: signature file already exists (use -w or --overwrite to write to it anyway)\n");
+                exit(EXIT_FAILURE);
+            } else {
+                printf("rsa: overwriting existing signature file %s\n", g_outfile);
+            }
+        } else if ((res < 0) && (errno == ENOENT)) {
+            // this is what we want
+        } else {
+            // some other error from stat!
+            fprintf(stderr, "rsa: unable to stat signature file to check its existence: %s\n", strerror(errno));
+            exit(EXIT_FAILURE);
+        }
+
+        // open the output file
+        if (g_debug) printf("do_sign_verify: opening and truncating signature file\n");
+        g_signaturefile_fd = open(g_signaturefile, O_RDWR | O_TRUNC | O_CREAT, (S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH));
+        if (g_signaturefile_fd < 0) {
+            fprintf(stderr, "rsa: error opening signature file for writing: %s\n", strerror(errno));
+            exit(EXIT_FAILURE);
+        }
+        // create a block in g_buff
+        get_random(g_buff, g_block_size);
+        g_buff[0] = 0;
+        // copy our digest into this block, after the random padding
+        memcpy(g_buff + 8, l_digest, 32);
+        if (g_debug > 0) {
+            printf("do_sign_verify: plaintext block with hash");
+            print_hex(g_buff, g_block_size);
+        }
+
+        mpz_t l_block;
+        mpz_init(l_block);
+        mpz_t l_cipher;
+        mpz_init(l_cipher);
+        mpz_t l_d;
+        mpz_init(l_d);
+        mpz_t l_n;
+        mpz_init(l_n);
+        size_t l_written;
+
+        // load our key data
+        mpz_import(l_d, g_block_size, 1, sizeof(unsigned char), 0, 0, g_d);
+        mpz_import(l_n, g_block_size, 1, sizeof(unsigned char), 0, 0, g_n);
+
+        // load up our cipher block
+        mpz_import(l_block, g_block_size, 1, sizeof(unsigned char), 0, 0, g_buff);
+
+        // and encrypt it with the private exponent
+        mpz_powm(l_cipher, l_block, l_d, l_n);
+        if (g_debug > 0) {
+            gmp_printf("n      = %Zx\nd      = %Zx\ncipher = %Zx\nblock  = %Zx\n", l_n, l_d, l_cipher, l_block);
+        }
+
+        // and export it to aux block
+        mpz_export(g_buff2, &l_written, 1, sizeof(unsigned char), 0, 0, l_cipher);
+        if (l_written != g_block_size) {
+            right_justify(l_written, g_block_size - l_written, (char *)g_buff2);
+        }
+        if (g_debug > 0) {
+            printf("do_sign_verify: encrypted hash");
+            print_hex(g_buff2, g_block_size);
+        }
+        printf("rsa: writing signature file...\n");
+        res = write(g_signaturefile_fd, g_buff2, g_block_size);
+        if (res < 0) {
+            fprintf(stderr, "rsa: problems writing to signature file: %s\n", strerror(errno));
+            exit(EXIT_FAILURE);
+        }
+
+        mpz_clear(l_block);
+        mpz_clear(l_cipher);
+        mpz_clear(l_d);
+        mpz_clear(l_n);
+
+    } else {
+        // read in and decrypt signature file
+        g_signaturefile_fd = open(g_signaturefile, O_RDONLY);
+        if (g_signaturefile_fd < 0) {
+            fprintf(stderr, "rsa: problems opening signature file: %s\n", strerror(errno));
+            exit(EXIT_FAILURE);
+        }
+        res = read(g_signaturefile_fd, g_buff, g_block_size);
+        if (res < 0) {
+            fprintf(stderr, "rsa: problems reading signature file: %s\n", strerror(errno));
+            exit(EXIT_FAILURE);
+        }
+        if (res != g_block_size) {
+            fprintf(stderr, "rsa: block size mismatch in signature, wrong key file or damaged key.\n");
+            exit(EXIT_FAILURE);
+        }
+
+        mpz_t l_block;
+        mpz_init(l_block);
+        mpz_t l_cipher;
+        mpz_init(l_cipher);
+        mpz_t l_e;
+        mpz_init(l_e);
+        mpz_t l_n;
+        mpz_init(l_n);
+        size_t l_written;
+
+        // load our key data
+        mpz_import(l_e, 4, 1, sizeof(unsigned char), 0, 0, g_e);
+        mpz_import(l_n, g_block_size, 1, sizeof(unsigned char), 0, 0, g_n);
+
+        // load up our cipher block
+        mpz_import(l_cipher, g_block_size, 1, sizeof(unsigned char), 0, 0, g_buff);
+
+        // and encrypt it with the private exponent
+        mpz_powm(l_block, l_cipher, l_e, l_n);
+        if (g_debug > 0) {
+            gmp_printf("n      = %Zx\ne      = %Zx\ncipher = %Zx\nblock  = %Zx\n", l_n, l_e, l_cipher, l_block);
+        }
+
+        // and export it to aux block
+        mpz_export(g_buff2, &l_written, 1, sizeof(unsigned char), 0, 0, l_block);
+        if (l_written != g_block_size) {
+            right_justify(l_written, g_block_size - l_written, (char *)g_buff2);
+        }
+
+        uint8_t l_digest_dec[32];
+        memcpy(l_digest_dec, g_buff2 + 8, 32);
+        if (g_debug > 0) {
+            printf("do_sign_verify: decrypted hash from signature file");
+            print_hex(l_digest_dec, 32);
+            printf("do_sign_verify: computed hash of input file");
+            print_hex(l_digest, 32);
+        }
+        if (memcmp(l_digest_dec, l_digest, 32) == 0) {
+            printf("rsa: verify OK\n");
+        } else {
+            printf("rsa: verify FAILED\n");
+        }
+
+        mpz_clear(l_block);
+        mpz_clear(l_cipher);
+        mpz_clear(l_e);
+        mpz_clear(l_n);
+    }
+}
+
 int main(int argc, char **argv)
 {
     unsigned int i;
     int res; // result variable for UNIX reads
     int opt;
-    while ((opt = getopt_long(argc, argv, "i:o:k:edsv?tw", g_options, NULL)) != -1) {
+    while ((opt = getopt_long(argc, argv, "i:o:k:g:edsv?tw", g_options, NULL)) != -1) {
         switch (opt) {
             case 1001:
             {
@@ -821,6 +1010,12 @@ int main(int argc, char **argv)
             {
                 strcpy(g_keyfile, optarg);
                 g_keyfile_specified = 1;
+            }
+            break;
+            case 'g':
+            {
+                strcpy(g_signaturefile, optarg);
+                g_signaturefile_specified = 1;
             }
             break;
             case 'w':
@@ -876,10 +1071,11 @@ int main(int argc, char **argv)
             case '?':
             {
                 printf("usage: rsa <options>\n");
-                printf("  -i (--in) <name> input file\n");
-                printf("  -o (--out) <name> output file\n");
-                printf("  -w (--overwrite) force overwrite of existing output file\n");
-                printf("  -k (--key) <name> full name of key file to use\n");
+                printf("  -i (--in) <name> specify input file\n");
+                printf("  -o (--out) <name> specify output file\n");
+                printf("  -w (--overwrite) force overwrite of existing output file or signature file\n");
+                printf("  -k (--key) <name> specify full name of key file to use\n");
+                printf("  -g (--signature) <name> specify signature file\n");
                 printf("     (--latitude) <value> specify your latitude\n");
                 printf("     (--longitude) <value> specify your longitude\n");
                 printf("       latitude and longitude are specified as floating point numbers\n");
@@ -892,9 +1088,9 @@ int main(int argc, char **argv)
                 printf("  -d (--decrypt) decrypt mode\n");
                 printf("       decrypts in->out with private key\n");
                 printf("  -s (--sign) sign mode (SHA2-256)\n");
-                printf("       encrypts in->out with private key and signs contents with private key\n");
+                printf("       computes sha2-256 hash of in, encrypts the hash and writes to signature file\n");
                 printf("  -v (--verify) verify mode\n");
-                printf("       decrypts in->out with public key and verifies contents against signature\n");
+                printf("       computes sha2-256 hash of in, compares with hash in decrypted signature file\n");
                 printf("  -t (--test) test mode\n");
                 exit(EXIT_SUCCESS);
             }
@@ -929,6 +1125,9 @@ int main(int argc, char **argv)
     }
     if (g_keyfile_specified > 0) {
         printf("rsa: key file   : %s\n", g_keyfile);
+    }
+    if (g_signaturefile_specified > 0) {
+        printf("rsa: signature  : %s\n", g_signaturefile);
     }
 
     // prepare urandom
@@ -1018,12 +1217,11 @@ int main(int argc, char **argv)
                 exit(EXIT_FAILURE);
             }
             prepare_infile();
-            get_infile_crc();
-            if (g_outfile_specified == 0) {
-                fprintf(stderr, "rsa: this function requires that you specify an output file.\n");
+            if (g_signaturefile_specified == 0) {
+                fprintf(stderr, "rsa: this function requires that you specify a signature file.\n");
                 exit(EXIT_FAILURE);
             }
-            prepare_outfile();
+            do_sign_verify(0);
         }
         break;
         case MODE_VERIFY:
@@ -1043,15 +1241,11 @@ int main(int argc, char **argv)
                 exit(EXIT_FAILURE);
             }
             prepare_infile();
-            if (g_infile_block_multiple > 0) {
-                fprintf(stderr, "rsa: input file must be a multiple of block size to verify.\n");
+            if (g_signaturefile_specified == 0) {
+                fprintf(stderr, "rsa: this function requires that you specify a signature file.\n");
                 exit(EXIT_FAILURE);
             }
-            if (g_outfile_specified == 0) {
-                fprintf(stderr, "rsa: this function requires that you specify an output file.\n");
-                exit(EXIT_FAILURE);
-            }
-            prepare_outfile();
+            do_sign_verify(1);
         }
         break;
         case MODE_TEST:
