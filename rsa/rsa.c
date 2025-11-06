@@ -899,6 +899,7 @@ void do_sign_verify(int a_mode)
             fprintf(stderr, "rsa: problems writing to signature file: %s\n", strerror(errno));
             exit(EXIT_FAILURE);
         }
+        close(g_signaturefile_fd);
 
         mpz_clear(l_block);
         mpz_clear(l_cipher);
@@ -921,6 +922,7 @@ void do_sign_verify(int a_mode)
             fprintf(stderr, "rsa: block size mismatch in signature, wrong key file or damaged key.\n");
             exit(EXIT_FAILURE);
         }
+        close(g_signaturefile_fd);
 
         mpz_t l_block;
         mpz_init(l_block);
