@@ -957,7 +957,7 @@ void do_sign_verify(int a_mode)
         // load up our cipher block
         mpz_import(l_cipher, g_block_size, 1, sizeof(unsigned char), 0, 0, g_buff);
 
-        // and encrypt it with the private exponent
+        // and decrypt it with the public exponent
         mpz_powm(l_block, l_cipher, l_e, l_n);
         if (g_debug > 0) {
             gmp_printf("n      = %Zx\ne      = %Zx\ncipher = %Zx\nblock  = %Zx\n", l_n, l_e, l_cipher, l_block);
