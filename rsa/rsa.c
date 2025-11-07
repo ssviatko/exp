@@ -232,6 +232,10 @@ void load_key()
         if (l_kih.type == KIHT_MODULUS) {
             // if we read the modulus, set the over bit width
             g_bits = ntohl(l_kih.bit_width);
+            if (g_bits < 768) {
+                printf("rsa: a 768 bit or larger key is required to use this program.\n");
+                exit(EXIT_FAILURE);
+            }
             printf("rsa: selected %d bit key.\n", g_bits);
             res = read(key_fd, g_n, (g_bits / 8));
             if (res != (g_bits / 8)) {
