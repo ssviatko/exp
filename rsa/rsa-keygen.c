@@ -43,7 +43,7 @@ struct option g_options[] = {
 
 int g_debug = 0;
 // note: for the keygen, g_bits now refers to the n/block size, not the p/q size
-unsigned int g_bits = 512; // default bit width
+unsigned int g_bits = 768; // default bit width
 unsigned int g_pqbits; // convenience value
 pthread_mutex_t g_urandom_mtx;
 int g_urandom_fd; // file descriptor for /dev/urandom

@@ -797,35 +797,35 @@ do_decrypt_keyerror:
 void do_sign_verify(int a_mode)
 {
     // mode=0, sign... mode=1, verify.
-    // irrespective of mode, we need to compute a sha2-256 hash on the input file
+    // irrespective of mode, we need to compute a sha2-512 hash on the input file
     int i;
     int res;
-    uint8_t l_digest[32];
+    uint8_t l_digest[64];
     uint8_t l_buff[4096]; // buffer our reads
 
-    // compute sha2-256 hash
-    sha256_ctx l_ctx;
-    sha256_init(&l_ctx);
+    // compute sha2-512 hash
+    sha512_ctx l_ctx;
+    sha512_init(&l_ctx);
     do {
         res = read(g_infile_fd, l_buff, 4096);
         if (res == 0)
             continue; // got our EOF
             if (res < 0) {
-                fprintf(stderr, "rsa: unable to compute sha2-256 hash of input file: %s\n", strerror(errno));
+                fprintf(stderr, "rsa: unable to compute sha2-512 hash of input file: %s\n", strerror(errno));
                 exit(EXIT_FAILURE);
             }
-            sha256_update(&l_ctx, (const uint8_t *)l_buff, res);
+            sha512_update(&l_ctx, (const uint8_t *)l_buff, res);
     } while (res != 0);
-    sha256_final(&l_ctx, l_digest);
+    sha512_final(&l_ctx, l_digest);
     // rewind g_infile_fd
     res = lseek(g_infile_fd, 0, SEEK_SET);
     if (res < 0) {
-        fprintf(stderr, "res: unable to rewind input file after computing sha2-256 hash: %s\n", strerror(errno));
+        fprintf(stderr, "res: unable to rewind input file after computing sha2-512 hash: %s\n", strerror(errno));
         exit(EXIT_FAILURE);
     }
     if (g_debug > 0) {
-        printf("do_sign_verify: sha2-256 hash of input file");
-        print_hex(l_digest, 32);
+        printf("do_sign_verify: sha2-512 hash of input file");
+        print_hex(l_digest, 64);
     }
 
     // get time and location info
@@ -867,15 +867,15 @@ void do_sign_verify(int a_mode)
         get_random(g_buff, g_block_size);
         g_buff[0] = 0;
         // copy our digest into this block, after the random padding
-        memcpy(g_buff + 8, l_digest, 32);
+        memcpy(g_buff + 8, l_digest, 64);
         printf("rsa: embedding GMT time stamp: %s", asctime(gmtime((time_t *)&l_time.ll)));
         printf("rsa: embedding geolocation: latitude %.4f, longitude %.4f\n", l_lat.f, l_long.f);
         reverse_int64(&l_time);
         reverse_float(&l_lat);
         reverse_float(&l_long);
-        memcpy(g_buff + 40, &l_time.ll, 8);
-        memcpy(g_buff + 48, &l_lat.f, 4);
-        memcpy(g_buff + 52, &l_long.f, 4);
+        memcpy(g_buff + 72, &l_time.ll, 8);
+        memcpy(g_buff + 80, &l_lat.f, 4);
+        memcpy(g_buff + 84, &l_long.f, 4);
         if (g_debug > 0) {
             printf("do_sign_verify: plaintext block with hash");
             print_hex(g_buff, g_block_size);
@@ -973,21 +973,21 @@ void do_sign_verify(int a_mode)
             right_justify(l_written, g_block_size - l_written, (char *)g_buff2);
         }
 
-        uint8_t l_digest_dec[32];
-        memcpy(l_digest_dec, g_buff2 + 8, 32);
+        uint8_t l_digest_dec[64];
+        memcpy(l_digest_dec, g_buff2 + 8, 64);
         if (g_debug > 0) {
             printf("do_sign_verify: decrypted hash from signature file");
-            print_hex(l_digest_dec, 32);
+            print_hex(l_digest_dec, 64);
             printf("do_sign_verify: computed hash of input file");
-            print_hex(l_digest, 32);
+            print_hex(l_digest, 64);
         }
-        if (memcmp(l_digest_dec, l_digest, 32) == 0) {
+        if (memcmp(l_digest_dec, l_digest, 64) == 0) {
             printf("rsa: verify OK\n");
-            memcpy(&l_time.ll, g_buff2 + 40, 8);
+            memcpy(&l_time.ll, g_buff2 + 72, 8);
             reverse_int64(&l_time);
             printf("rsa: GMT timestamp of signature: %s", asctime(gmtime((time_t *)&l_time.ll)));
-            memcpy(&l_lat.f, g_buff2 + 48, 4);
-            memcpy(&l_long.f, g_buff2 + 52, 4);
+            memcpy(&l_lat.f, g_buff2 + 80, 4);
+            memcpy(&l_long.f, g_buff2 + 84, 4);
             reverse_float(&l_lat);
             reverse_float(&l_long);
             printf("rsa: geolocation: latitude %.4f, longitude %.4f\n", l_lat.f, l_long.f);
@@ -1117,10 +1117,10 @@ int main(int argc, char **argv)
                 printf("       encrypts in->out with public key\n");
                 printf("  -d (--decrypt) decrypt mode\n");
                 printf("       decrypts in->out with private key\n");
-                printf("  -s (--sign) sign mode (SHA2-256)\n");
-                printf("       computes sha2-256 hash of in, encrypts the hash and writes to signature file\n");
+                printf("  -s (--sign) sign mode (SHA2-512)\n");
+                printf("       computes sha2-512 hash of in, encrypts the hash and writes to signature file\n");
                 printf("  -v (--verify) verify mode\n");
-                printf("       computes sha2-256 hash of in, compares with hash in decrypted signature file\n");
+                printf("       computes sha2-512 hash of in, compares with hash in decrypted signature file\n");
                 printf("  -t (--test) test mode\n");
                 exit(EXIT_SUCCESS);
             }
