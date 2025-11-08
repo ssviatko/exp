@@ -8,7 +8,7 @@
 #include <time.h>
 #include <getopt.h>
 
-#define MAXBITS 8192
+#define MAXBITS 16384
 #define MAXBYTEBUFF (MAXBITS / 8)
 
 unsigned char l_p[MAXBYTEBUFF];
@@ -38,14 +38,14 @@ int main(int argc, char **argv)
 			case '?':
 				{
 					printf("usage: dh -b (--bits) <bit width>\n");
-					printf("  must be between 128-8192 in 64 bit increments\n");
+					printf("  must be between 128-%d in 64 bit increments\n", MAXBITS);
 					printf("  default: 512 bits\n");
 					exit(EXIT_SUCCESS);
 				}
 				break;
 		}
 	}
-	if (l_bits > 8192) {
+	if (l_bits > MAXBITS) {
 		fprintf(stderr, "dh: bit width too big for practical purposes.\n");
 		exit(EXIT_FAILURE);
 	}
@@ -93,8 +93,8 @@ int main(int argc, char **argv)
 		mpz_nextprime(l_p_import, l_p_import);
 	}
 	gmp_printf("p = %Zx\n", l_p_import);
-	l_pp = mpz_probab_prime_p(l_p_import, 50);
-	printf("mpz_probab_prime_p now returns %d.\n", l_pp);
+//	l_pp = mpz_probab_prime_p(l_p_import, 50);
+//	printf("mpz_probab_prime_p now returns %d.\n", l_pp);
 
 	printf("Preparing %d-bit a value...\n", l_privbits);
 	res = read(l_urandom_fd, l_a, (l_privbits / 8));
