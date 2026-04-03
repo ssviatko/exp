@@ -90,6 +90,19 @@ int main(int argc, char **argv)
 	mpz_init(l_q2);
 	mpz_t l_counter;
 	mpz_init(l_counter);
+	mpz_t l_dp;
+	mpz_init(l_dp);
+	mpz_t l_dq;
+	mpz_init(l_dq);
+	mpz_t l_qinv;
+	mpz_init(l_qinv);
+	mpz_t l_m1;
+	mpz_init(l_m1);
+	mpz_t l_m2;
+	mpz_init(l_m2);
+	mpz_t l_h;
+	mpz_init(l_h);
+
 	int l_success = 0;
 	unsigned int l_attempt = 1;
 	while (l_success == 0) {
@@ -204,6 +217,14 @@ int main(int argc, char **argv)
 		} else {
 			gmp_printf("d       = %Zx\n", l_d);
 		}
+
+		// set up for chinese remainder
+		mpz_mod(l_dp, l_d, l_p1);
+		gmp_printf("chinese: dp = %Zx\n", l_dp);
+		mpz_mod(l_dq, l_d, l_q1);
+		gmp_printf("chinese: dq = %Zx\n", l_dq);
+		mpz_invert(l_qinv, l_q_import, l_p_import);
+		gmp_printf("chinese: qinv = %Zx\n", l_qinv);
 		l_success = 1; // made it this far, we generated a key pair!
 	}
 
@@ -213,6 +234,8 @@ int main(int argc, char **argv)
 	mpz_init(l_cipher);
 	mpz_t l_decrypted;
 	mpz_init(l_decrypted);
+	mpz_t l_chinese;
+	mpz_init(l_chinese);
 	printf("encrypt with public key -> decrypt with private key\n");
 	for (i = 0; i < 10; ++i) {
 		res = read(l_urandom_fd, l_pt, ((l_bits * 2) / 8));
@@ -225,22 +248,30 @@ int main(int argc, char **argv)
 		mpz_import(l_plain, ((l_bits * 2) / 8) - 1, 1, sizeof(unsigned char), 0, 0, l_pt);
 		mpz_powm(l_cipher, l_plain, l_e, l_n);
 		mpz_powm(l_decrypted, l_cipher, l_d, l_n);
-		gmp_printf("plain     = %Zx\ncipher    = %Zx\ndecrypted = %Zx %d\n", l_plain, l_cipher, l_decrypted, mpz_cmp(l_plain, l_decrypted));
+		// compute chinese remainder
+		mpz_powm(l_m1, l_cipher, l_dp, l_p_import);
+		mpz_powm(l_m2, l_cipher, l_dq, l_q_import);
+		mpz_sub(l_m1, l_m1, l_m2);
+		mpz_mul(l_h, l_qinv, l_m1);
+		mpz_mod(l_h, l_h, l_p_import);
+		mpz_mul(l_h, l_h, l_q_import);
+		mpz_add(l_chinese, l_m2, l_h);
+		gmp_printf("plain     = %Zx\ncipher    = %Zx\ndecrypted = %Zx %d\nchinese = %Zx %d\n", l_plain, l_cipher, l_decrypted, mpz_cmp(l_plain, l_decrypted), l_chinese, mpz_cmp(l_plain, l_chinese));
 	}
-	printf("encrypt with private key -> decrypt with public key\n");
-	for (i = 0; i < 10; ++i) {
-		res = read(l_urandom_fd, l_pt, ((l_bits * 2) / 8));
-		if (res != ((l_bits * 2) / 8)) {
-			fprintf(stderr, "rsa: problems reading /dev/urandom: %s\n", strerror(errno));
-			exit(EXIT_FAILURE);
-		}
-		// padding
-		l_pt[0] = 0x00;
-		mpz_import(l_plain, ((l_bits * 2) / 8) - 1, 1, sizeof(unsigned char), 0, 0, l_pt);
-		mpz_powm(l_cipher, l_plain, l_d, l_n);
-		mpz_powm(l_decrypted, l_cipher, l_e, l_n);
-		gmp_printf("plain     = %Zx\ncipher    = %Zx\ndecrypted = %Zx %d\n", l_plain, l_cipher, l_decrypted, mpz_cmp(l_plain, l_decrypted));
-	}
+//	printf("encrypt with private key -> decrypt with public key\n");
+//	for (i = 0; i < 10; ++i) {
+//		res = read(l_urandom_fd, l_pt, ((l_bits * 2) / 8));
+//		if (res != ((l_bits * 2) / 8)) {
+//			fprintf(stderr, "rsa: problems reading /dev/urandom: %s\n", strerror(errno));
+//			exit(EXIT_FAILURE);
+//		}
+//		// padding
+//		l_pt[0] = 0x00;
+//		mpz_import(l_plain, ((l_bits * 2) / 8) - 1, 1, sizeof(unsigned char), 0, 0, l_pt);
+//		mpz_powm(l_cipher, l_plain, l_d, l_n);
+//		mpz_powm(l_decrypted, l_cipher, l_e, l_n);
+//		gmp_printf("plain     = %Zx\ncipher    = %Zx\ndecrypted = %Zx %d\n", l_plain, l_cipher, l_decrypted, mpz_cmp(l_plain, l_decrypted));
+//	}
 
 	// clean up
 	mpz_clear(l_p_import);
@@ -255,8 +286,15 @@ int main(int argc, char **argv)
 	mpz_clear(l_plain);
 	mpz_clear(l_cipher);
 	mpz_clear(l_decrypted);
+	mpz_clear(l_chinese);
 	mpz_clear(l_q2);
 	mpz_clear(l_counter);
+	mpz_clear(l_dp);
+	mpz_clear(l_dq);
+	mpz_clear(l_qinv);
+	mpz_clear(l_h);
+	mpz_clear(l_m1);
+	mpz_clear(l_m2);
 
 	return 0;
 }
