@@ -8,6 +8,9 @@
  * 4. Start sequencer (reaper)
  * 5. In qjackctl graph view, tie reaper midi output to a2j input for this program
  * 6. Send MIDI data
+ *
+ * Program updated to create actual JACK MIDI object instead of ALSA.
+ *
  */
 
 #include <iostream>
@@ -28,7 +31,7 @@ void mycallback( double deltatime, std::vector<unsigned char> *message, void *us
 int main(int argc, char **argv)
 {
 	try {
-		RtMidiIn midiin;
+		RtMidiIn midiin(RtMidi::UNIX_JACK, "RtMidi Client Test");
 		midiin.openVirtualPort("RtMidi Input");
 		midiin.setCallback(&mycallback);
 		midiin.ignoreTypes(false, true, false);
