@@ -16,6 +16,7 @@
 #include <iostream>
 #include <iomanip>
 #include <vector>
+#include <cmath>
 
 #include "rtmidi/RtMidi.h"
 
@@ -24,6 +25,11 @@ void mycallback( double deltatime, std::vector<unsigned char> *message, void *us
 	unsigned int nBytes = message->size();
 	for ( unsigned int i=0; i<nBytes; i++ )
 		std::cout << "Byte " << std::hex << i << " = " << (int)message->at(i) << ", " << std::dec;
+	int cmd = message->at(0);
+	if ((cmd >= 0x90) && (cmd <= 0x9f)) {
+		double freq = 440 * pow(2, ((double)message->at(1) - 69.0) / 12.0);
+		std::cout << "noteon freq=" << freq << " ";
+	}
 	if ( nBytes > 0 )
 	std::cout << "stamp = " << deltatime << std::endl;
 }
